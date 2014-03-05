@@ -216,19 +216,22 @@ gboolean print_node(GNode *node, sds *preindent) {
     if (p) {
         GNode *prev_node = g_node_prev_sibling(node);
         GNode *next_node = g_node_next_sibling(node);
-        if (!prev_node && next_node) {
+        if (!prev_node && !next_node) {
+           *preindent = sdscat(*preindent, "   ");
+            printf("---"); 
+        } else if (!prev_node && next_node) {
             *preindent = sdscat(*preindent, " | ");
             printf("-┬-");
-        }
-        else if (prev_node && next_node) {
+        } else if (prev_node && next_node) {
             *preindent = sdscat(*preindent, " | ");
             printf(" ├-");
         } else {
             *preindent = sdscat(*preindent, "   ");
             printf(" └-");
         }
-        *preindent = sdscat(*preindent, "      ");
-        printf("%6ld", p->pid);
+        
+        printf("%s", p->name);
+        *preindent = sdscatprintf(*preindent, "%*s", sdslen(p->name), " ");
     }
     GNode *first_child = g_node_first_child(node);
     GNode *next_sibling = NULL;
@@ -259,10 +262,10 @@ int main(int argc, char *argv[]) {
     
     list_processes(&processes);
     processes = g_slist_sort(processes, compare);
-    g_slist_foreach(processes, print_process, root);
+//    g_slist_foreach(processes, print_process, root);
     
     add_node_to_tree(p, root, processes);
-    g_node_traverse(root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, print_tree, NULL);
+//    g_node_traverse(root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, print_tree, NULL);
     
     sds indent = sdsnew("");
     print_node(root, &indent);
