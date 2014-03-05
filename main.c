@@ -23,11 +23,6 @@ typedef struct Process {
     int threads;
 } Process;
 
-typedef struct Tuple {
-    gconstpointer a;
-    gconstpointer b;
-} Tuple;
-
 int process_status(const char *process_id, const char* status, char *value, const size_t size);
 int process_cmd_name(const char*, char*, const size_t);
 long long process_parent_id(const char *process_id);
@@ -160,7 +155,7 @@ gint compare_process_ppid(gconstpointer a, gconstpointer b) {
     return ((Process *)a)->ppid - ((Process *)b)->ppid;
 }
 
-void print_processes(gpointer data, gpointer user_data) {
+void print_process(gpointer data, gpointer user_data) {
     Process *p = (Process *)data;
     printf("Name: %s\tPid: %ld\tPPid: %ld\tTgid: %ld\n", p->name, p->pid, p->ppid, p->tgid);
 }
@@ -170,48 +165,110 @@ void free_process(gpointer data) {
 }
 
 GSList *find_children(Process *parent, GSList *candiates) {
-    Process p, *match;
+    assert(parent != NULL);
+    assert(candiates != NULL);
+    Process p;
+    GSList *match;
     p.ppid = parent->pid;
-    match = g_slist_find_custom(children, &p, compare_process_ppid);
+    match = g_slist_find_custom(candiates, &p, compare_process_ppid);
     return match;
 }
 
-void add_nodes_to_tree(GNode *parent, GSList *children, GSList *candiates) {
+void add_node_to_tree(Process *child_process, GNode *parent_node, GSList *candiates) {
+    assert(child_process != NULL);
+    assert(parent_node != NULL);
     assert(candiates != NULL);
-    assert(parent != NULL);
-    assert(children != NULL);
-    Tuple tuple = {parent, candiates};
-    g_slist_foreach(children, add_node_to_tree, &tuple);
+    Process *parent_process = (Process *)parent_node->data;
+    GNode *child_node = g_node_append_data(parent_node, child_process);
+    
+    GSList *match = NULL;
+    GSList *src = candiates;
+    Process *p = NULL;
+    while (NULL != (match = find_children(child_process, src))) {
+        p = (Process *)match->data;
+        add_node_to_tree(p, child_node, candiates);
+        if (NULL == (src = g_slist_next(match))) {
+            break;
+        }
+    }
 }
 
-void add_node_to_tree(Process *child, Tuple *tuple) {
-    assert(tuple != NULL);
-    assert(child != NULL);
-    assert(parent != NULL);
-    GNode *parent = (GNode *)tuple->a;
-    GSList *candiates = (GSList *)tuple->b;
-    GNode *child_node = g_node_append_data(parent, child);
-    Tuple t = {child_node, candiates};
-    GSList *match = find_children(child, candiates);
-    if (!match) {
+
+gboolean print_tree(GNode *node, gpointer user_data) {
+    Process *p = (Process *)node->data;
+    if (!p) {
         return;
     }
-    add_nodes_to_tree(child_node, match, candiates);
+    print_process(p, NULL);
 }
 
+void print_indent(char c, int n) {
+    int i = 0;
+    for (i = 0; i < n; i++) {
+        printf("%c", c);
+    }
+}
+
+gboolean print_node(GNode *node, sds *preindent) {
+    assert(NULL != node);
+    Process *p = (Process *)node->data;
+    
+    if (p) {
+        GNode *prev_node = g_node_prev_sibling(node);
+        GNode *next_node = g_node_next_sibling(node);
+        if (!prev_node && next_node) {
+            *preindent = sdscat(*preindent, " | ");
+            printf("-┬-");
+        }
+        else if (prev_node && next_node) {
+            *preindent = sdscat(*preindent, " | ");
+            printf(" ├-");
+        } else {
+            *preindent = sdscat(*preindent, "   ");
+            printf(" └-");
+        }
+        *preindent = sdscat(*preindent, "      ");
+        printf("%6ld", p->pid);
+    }
+    GNode *first_child = g_node_first_child(node);
+    GNode *next_sibling = NULL;
+    sds next_indent;
+    if (first_child) {
+        next_indent = sdsdup(*preindent);
+        print_node(first_child, &next_indent);
+        sdsfree(next_indent);
+        while (NULL != (next_sibling = g_node_next_sibling(first_child))) {
+            printf("\n");
+            printf("%s", *preindent);
+            
+            next_indent = sdsdup(*preindent);
+            print_node(next_sibling, &next_indent);
+            sdsfree(next_indent);
+            first_child = next_sibling;
+        }
+    }
+}
 
 int main(int argc, char *argv[]) {
     GSList *processes = NULL, *match = NULL;
     Process *p = malloc(sizeof(Process));
+    p->name = sdsnew("+");
     p->ppid = 0;
     p->pid = 0;
-    GNode *root = g_node_new(p);
+    GNode *root = g_node_new(NULL);
     
     list_processes(&processes);
     processes = g_slist_sort(processes, compare);
-    g_slist_foreach(processes, print_processes, root);
+    g_slist_foreach(processes, print_process, root);
     
-
+    add_node_to_tree(p, root, processes);
+    g_node_traverse(root, G_PRE_ORDER, G_TRAVERSE_ALL, -1, print_tree, NULL);
+    
+    sds indent = sdsnew("");
+    print_node(root, &indent);
+    sdsfree(indent);
+    
+    g_node_destroy(root);
     free(p);
     g_slist_free_full(processes, free_process);
     exit(EXIT_SUCCESS);
