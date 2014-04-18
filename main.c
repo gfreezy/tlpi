@@ -9,58 +9,42 @@
 #include "tlpi_hdr.h"
 #include "util.h"
 
+#ifndef BUF_SIZE
+#define BUF_SIZE 1024
+#endif
 
-void list_fds(const char *pathname) {
-    DIR *dir = opendir("/proc");
-    if (dir == NULL) {
-        errExit("open /proc");
-    }
-    
-    struct dirent *ent, *ent2;
-    char fd_dirname[FILENAME_MAX] = {0};
-    char link[FILENAME_MAX] = {0};
-    char link_path[FILENAME_MAX] = {0};
-    DIR *fd_dir = NULL;
-    char *pid = NULL, *fd = NULL;
-    while ((ent = readdir(dir)) != NULL) {
-        pid = ent->d_name;
-
-        if (ent->d_type != DT_DIR || !strisdigit(pid)) {
-            continue;
-        }
-        
-        // find fds
-        snprintf(fd_dirname, FILENAME_MAX, "/proc/%s/fd", pid);
-        fd_dir = opendir(fd_dirname);
-        if (fd_dir == NULL) {
-            continue;
-        }
-        while ((ent2 = readdir(fd_dir)) != NULL) {
-            if (ent2->d_type != DT_LNK) {
-                continue;
-            }
-            fd = ent2->d_name;
-            snprintf(link_path, FILENAME_MAX, "%s/%s", fd_dirname, fd);
-            memset(link, 0, FILENAME_MAX);
-            if (readlink(link_path, link, FILENAME_MAX) == -1) {
-                errMsg("readlink error: %s", link_path);
-                continue;
-            }
-            if (strncmp(pathname, link, strlen(link)) == 0) {
-                printf("pid: %s\n", pid);
-                break;
-            }
-        }
-        
-        closedir(fd_dir);
-    }
-    closedir(dir);
-}
 
 int main(int argc, char *argv[]) {
-    if (argc <= 1) {
-        usageErr("%s pathname\n", argv[0]);
+    int inputFd, outputFd, openFlags;
+    mode_t filePerms;
+    ssize_t numRead;
+    char buf[BUF_SIZE];
+    
+    inputFd = open(argv[1], O_RDONLY);
+    if (inputFd == -1) {
+        errExit("open %s error", argv[1]);
     }
-    list_fds(argv[1]);
+    
+    openFlags = O_CREAT | O_WRONLY | O_TRUNC;
+    filePerms = S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP | S_IROTH;
+    outputFd = open(argv[2], openFlags, filePerms);
+    if (outputFd == -1) {
+        errExit("open %s error", argv[2]);
+    }
+    
+    while ((numRead = read(inputFd, buf, BUF_SIZE)) > 0) {
+        if (write(outputFd, buf, numRead) < numRead) {
+            fatal("write error");
+        }
+    }
+    if (numRead == -1) {
+        errExit("read file error");
+    }
+    if (close(inputFd) == -1) {
+        errExit("close file");
+    }
+    if (close(outputFd) == -1) {
+        errExit("close file");
+    }
     exit(EXIT_SUCCESS);
 }
