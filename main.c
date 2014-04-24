@@ -7,142 +7,91 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <limits.h>
-#include "lib/tlpi_hdr.h"
+#include <math.h>
+#include "tlpi_hdr.h"
 #include "util.h"
 
 
-#ifndef BUF_SIZE
-#define BUF_SIZE 1024
+#ifndef FILENAME_LENGTH
+#define FILENAME_LENGTH 6
 #endif
 
-#define LINE_NUMBER 10
 
-
-char *splitLines(const char *buf, char **pos) {
-//    parameters:
-//      buf: string to split
-//      pos: NULL to begin a new split.
-//    return:
-//      line one by one
-//      NULL represents no more lines.
-//      returned pointer memory will be overrited in the following call.
-//    
-//    newline characters are not stripped
-    if (buf == NULL) {
-        return NULL;
+int createFile(const char *filename) {
+    int fd = open(filename, O_CREAT|O_WRONLY|O_EXCL);
+    if (fd == -1) {
+        errMsg("create %s error", filename);
+        return -1;
     }
-    static char line[LINE_MAX];
-    memset(line, 0, LINE_MAX);
-    size_t size = strlen(buf);
-    if (*pos == NULL) {
-        *pos = (char *)buf;
-    }
-    if (*pos >= buf + size) {
-        return NULL;
-    }
-    char *lineBegin = *pos;
-    char *nextEnd = NULL;
-    char cur, next;
-    size_t len;
-    while (*pos < buf + size) {
-        cur = **pos;
-        next = *(*pos + 1);
-
-        if ((cur == '\n' || cur == '\r') && (next != '\n' && next != '\r')) {
-            nextEnd = *pos;
-        } else if (next == '\0') {
-            nextEnd = *pos;
+    ssize_t byteWritten;
+    if (-1 == (byteWritten = write(fd, "1", 1))) {
+        errMsg("write one byte error");
+        if (-1 == close(fd)) {
+            errExit("close file %s error", filename);
         }
-        (*pos)++;
-        
-        if (nextEnd) {
-            len = nextEnd - lineBegin + 1;
-            if (LINE_MAX < len) {
-                return NULL;
-            }
-            memcpy(line, lineBegin, len);
-            return line;
-        }
+        return -1;
     }
-    
-    return NULL;    
+
+    if (-1 == close(fd)) {
+        errExit("close file %s error", filename);
+    }
+    return 0;
+}
+
+
+int deleteFile(const char *filename) {
+    if (-1 == unlink(filename)) {
+        errMsg("delete file %s error", filename);
+        return -1;
+    }
+    return 0;
 }
 
 
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        usageErr("tail [-f lineNum] file");
+    if (argc < 3) {
+        usageErr("%s dir numberOfFiles", argv[0]);
     }
-    int c;
-    char *filename = NULL, *strLineNum = NULL;
-    while((c=getopt(argc, argv, "n:")) != -1) {
-        switch(c) {
-        case 'n':
-            if (optind != argc) {
-                strLineNum = optarg;
-            } else {
-                errExit("tail [-f lineNum] file");
+
+    int numOfFiles = getInt(argv[2], GN_ANY_BASE | GN_GT_0, "numberOfFiles");
+
+    char *path = malloc(PATH_MAX);
+    if (realpath(argv[1], path) == NULL) {
+        errExit("get abs path error");
+    }
+    DIR *dir = opendir(path);
+    if (dir == NULL) {
+        fprintf(stderr, "%s is not a valid dir\n", path);
+        usageErr("%s dir numberOfFiles", argv[0]);
+    }
+
+    int i = 0, randNum, filePostfix;
+    char filename[FILENAME_MAX];
+    srand(time(NULL));
+    while (i < numOfFiles) {
+        randNum = rand();
+        filePostfix = randNum % ((int)pow(10, FILENAME_LENGTH) -1);
+        snprintf(filename, FILENAME_MAX, "%s/x%.6d", path, filePostfix);
+        // fprintf(stderr, "%s\n", filename);
+        if (-1 == createFile(filename)) {
+            continue;
+        }
+        i++;
+    }
+
+    rewinddir(dir);
+
+    struct dirent *ent;
+    while((ent = readdir(dir)) != NULL) {
+        if (ent->d_type == DT_REG && strstr(ent->d_name, "x") != NULL) {
+            snprintf(filename, FILENAME_MAX, "%s/%s", path, ent->d_name);
+            // fprintf(stderr, "delete %s\n", filename);
+            if (-1 == deleteFile(filename)) {
+                // remove file error
             }
         }
     }
-    filename = argv[argc - 1];
-    int lineNum = LINE_NUMBER;
-    if (strLineNum) {
-        lineNum = (int)strtol(strLineNum, NULL, 10);
-        if (lineNum == 0 && errno) {
-            usageErr("tail [-f lineNum] file");
-        }
-    }
-    
-//    printf("filename: %s, lineNum: %d\n", filename, lineNum);
-    
-    int fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        errExit("file %s cannot be open", filename);
-    }
-    
-    int product = 1;
-    size_t bufSize = BUF_SIZE;
-    char *buf = malloc(bufSize + 1);
-    ssize_t bytesRead = 0;
-    char *line = NULL;
-    char *pos = NULL;
-    size_t lineCount = 0;
-    
-    do {
-        if (-1 == lseek(fd, -bufSize, SEEK_END)) {
-            errExit("seek end error");
-        }
-        if (-1 == (bytesRead = read(fd, buf, bufSize))) {
-            errExit("read error");
-        }
-        buf[bytesRead] = '\0';
 
-        lineCount = 0;        
-        pos = NULL;
-        while((line = splitLines(buf, &pos)) != NULL) {
-            lineCount++;
-        }        
-        
-//        printf("line Count: %u\n", lineCount);
-        if (lineCount > lineNum) {
-            break;
-        }
-        product++;
-        buf = realloc(buf, product * BUF_SIZE + 1);
-    } while (1);
-
-    pos = NULL;    
-    int l;
-    for (l=1; (line = splitLines(buf, &pos)) != NULL; l++) {
-        if (l > lineCount - lineNum) {
-            printf("%s", line);
-        }
-    }           
-    
-    free(buf);
-    if (-1 == close(fd)) {
-        errExit("close file");
-    }
+    free(path);
     exit(EXIT_SUCCESS);
 }
