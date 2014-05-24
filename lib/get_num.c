@@ -14,7 +14,7 @@ gnFail(const char *fname, const char *msg, const char *arg, const char *name)
     fprintf(stderr, " (in %s)", name);
   }
   fprintf(stderr, ": %s\n", msg);
-  if (arg != NULL & *arg != '\0')
+  if (arg != NULL && *arg != '\0')
   {
     fprintf(stderr, "        offending text: %s\n", arg);
   }

@@ -20,7 +20,7 @@ int main(int argc, char const *argv[])
 
   memset(&claddr, 0, sizeof(struct sockaddr_un));
   claddr.sun_family = AF_UNIX;
-  snprintf(claddr.sun_path, sizeof(claddr.sun_path), "/tmp/ud_ucase_cl.%ld", (long)getpid());
+  snprintf(&claddr.sun_path[1], sizeof(claddr.sun_path) - 1, "ud_ucase_cl.%ld", (long)getpid());
 
   if (bind(cfd, (struct sockaddr *)&claddr, sizeof(claddr)) == -1)
   {
@@ -29,7 +29,7 @@ int main(int argc, char const *argv[])
 
   memset(&svaddr, 0, sizeof(svaddr));
   svaddr.sun_family = AF_UNIX;
-  strncpy(svaddr.sun_path, SV_SOCK_PATH, sizeof(svaddr.sun_path) - 1);
+  strncpy(&svaddr.sun_path[1], SV_SOCK_NAME, sizeof(svaddr.sun_path) - 2);
 
   size_t slen = strlen(argv[1]);
   bytes_sent = sendto(cfd, argv[1], slen, 0, (struct sockaddr *)&svaddr, sizeof(svaddr));

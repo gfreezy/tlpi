@@ -50,8 +50,6 @@ MAIN = tlpi
 .PHONY: depend clean
 
 all:    $(MAIN)
-				@echo  Simple compiler named mycc has been compiled
-				@echo $(SRCS)
 
 $(MAIN): $(OBJS)
 				$(CC) $(CFLAGS) $(INCLUDES) -o $(MAIN) $(OBJS) $(LFLAGS) $(LIBS)

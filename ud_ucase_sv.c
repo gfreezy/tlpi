@@ -15,13 +15,9 @@ int main(int argc, char const *argv[])
     errExit("create socket error!");
   }
 
-  if (remove(SV_SOCK_PATH) == -1 && errno != ENOENT) {
-    errExit("remove file error");
-  }
-
   memset(&svaddr, 0, sizeof(struct sockaddr_un));
   svaddr.sun_family = AF_UNIX;
-  strncpy(svaddr.sun_path, SV_SOCK_PATH, sizeof(svaddr.sun_path) - 1);
+  strncpy(&svaddr.sun_path[1], SV_SOCK_NAME, sizeof(svaddr.sun_path) - 2);
 
   if (bind(sfd, (struct sockaddr*)&svaddr, sizeof(struct sockaddr_un)) == -1) {
     errExit("bind error");
