@@ -26,8 +26,9 @@ LFLAGS =
 LIBS =
 
 # define the C source files
-SRCS = $(shell find . -name "*.c" -exec echo -n "{} " \;)
+SRCS = $(shell find . -not -name "*_exc.c" -name "*.c" -printf "%p ")
 
+DST = dst
 # define the C object files
 #
 # This uses Suffix Replacement within a macro:
@@ -39,7 +40,8 @@ SRCS = $(shell find . -name "*.c" -exec echo -n "{} " \;)
 OBJS = $(SRCS:.c=.o)
 
 # define the executable file
-MAIN = tlpi
+EXECUTABLE_SRCS = $(shell find . -name "*_exc.c" -printf "%f ")
+EXECUTABLES = $(EXECUTABLE_SRCS:.c=)
 
 #
 # The following part of the makefile is generic; it can be used to
@@ -49,10 +51,10 @@ MAIN = tlpi
 
 .PHONY: depend clean
 
-all:    $(MAIN)
+all:    $(EXECUTABLES)
 
-$(MAIN): $(OBJS)
-				$(CC) $(CFLAGS) $(INCLUDES) -o $(MAIN) $(OBJS) $(LFLAGS) $(LIBS)
+%_exc:	$(OBJS) %_exc.o
+				$(CC) $(CFLAGS) $(INCLUDES) -o $@ $^ $(LFLAGS) $(LIBS)
 
 # this is a suffix replacement rule for building .o's from .c's
 # it uses automatic variables $<: the name of the prerequisite of
@@ -62,7 +64,7 @@ $(MAIN): $(OBJS)
 				$(CC) $(CFLAGS) $(INCLUDES) -c $<  -o $@
 
 clean:
-				$(RM) $(MAIN)
+				$(RM) $(EXECUTABLES)
 				find . -name "*.o" -exec $(RM) "{}" \;
 
 depend: $(SRCS)
